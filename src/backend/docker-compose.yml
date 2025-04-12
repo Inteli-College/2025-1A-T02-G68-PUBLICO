@@ -1,0 +1,17 @@
+services:
+  postgres:
+    image: postgres:latest
+    container_name: orbix_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: orbix
+      POSTGRES_PASSWORD: orbix
+      POSTGRES_DB: orbix
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+volumes:
+  pg_data:
+    driver: local

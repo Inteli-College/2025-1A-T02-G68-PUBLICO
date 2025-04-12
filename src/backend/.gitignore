@@ -1,0 +1,5 @@
+node_modules
+# Keep environment variables out of version control
+.env
+
+prisma/grid1_in15dhzi.xlsx

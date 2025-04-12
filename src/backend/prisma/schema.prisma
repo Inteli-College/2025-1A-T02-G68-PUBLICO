@@ -1,0 +1,434 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model tb_user {
+  id        String       @id @default(uuid())
+  name      String
+  last_name String
+  photo     String?
+  email     String       @unique
+  cpf       String       @unique
+  role      Role
+  region    String
+  status    Boolean
+  companyId String?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  trader    tb_trade[]
+  orders    tb_order[]
+  company   tb_company?  @relation(fields: [companyId], references: [id])
+  auth      tb_userauth?
+}
+
+model tb_userauth {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  password  String
+  salt      String
+  createdAt DateTime @default(now())
+  user      tb_user  @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model tb_company {
+  id       String       @id @default(uuid())
+  name     String
+  status   Boolean
+  nav      Float
+  accounts tb_account[]
+  users    tb_user[]
+}
+
+model tb_account {
+  id                  String                    @id @default(uuid())
+  companyId           String
+  status              Boolean
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+  complianceId        String?
+  riskProfileId       String?
+  company             tb_company                @relation(fields: [companyId], references: [id])
+  compliance          tb_compliance?            @relation(fields: [complianceId], references: [id])
+  riskProfile         tb_risk_profile?          @relation(fields: [riskProfileId], references: [id])
+  positions           tb_position[]
+  counterparties      tb_account_counterparty[]
+  trades              tb_trade_allocation[]
+  tb_order_allocation tb_order_allocation[]
+}
+
+model tb_order_allocation {
+  id        String   @id @default(uuid())
+  orderId   String
+  accountId String
+  quantity  Int
+  createdAt DateTime @default(now())
+
+  order   tb_order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  account tb_account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+}
+
+model tb_account_counterparty {
+  id             String          @id @default(uuid())
+  accountId      String
+  counterpartyId String
+  status         Boolean
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  account        tb_account      @relation(fields: [accountId], references: [id])
+  counterparty   tb_counterparty @relation(fields: [counterpartyId], references: [id])
+}
+
+model tb_book {
+  id          String        @id @default(uuid())
+  name        String        @unique
+  description String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  positions   tb_position[]
+  trades      tb_trade[]
+  orders      tb_order[]
+}
+
+model tb_position {
+  id                     String                @id @default(uuid())
+  bookId                 String
+  counterpartyId         String?
+  instrumentId           String
+  price                  Float // preço medio de entradas nos trades que compoem a posição
+  tag_ids                String[]
+  expiry_date            DateTime?
+  settlement_date        DateTime?
+  daily_pnl              Float
+  mtd_pnl                Float
+  ytd_pnl                Float
+  fair_value             Float?
+  last_busday_fair_value Float?
+  NMV                    Float?
+  last_transfer_date     DateTime?
+  source_price           PriceSource           @default(ORBIX)
+  pnl                    Float
+  fees                   Float
+  accountId              String
+  orderType              OrderType?            @default(LOAN)
+  paymentType            PaymentType?          @default(FixedRate)
+  accr_method            accrual_method?       @default(ACTUAL360)
+  comp_freq              CompFreq?             @default(SIMPLE)
+  payment_frequency      PaymentFrequency?     @default(TERM)
+  payment_bdc            PaymentBDC            @default(MODFOLLOWING)
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+  status                 Boolean
+  trades                 tb_trade[]
+  account                tb_account            @relation(fields: [accountId], references: [id])
+  book                   tb_book               @relation(fields: [bookId], references: [id])
+  counterparty           tb_counterparty?      @relation(fields: [counterpartyId], references: [id])
+  instrument             tb_instrument         @relation(fields: [instrumentId], references: [id])
+  history                tb_position_history[]
+  tags                   tb_tag[]              @relation("PositionTags")
+}
+
+model tb_position_history {
+  id                     String      @id @default(uuid())
+  position_id            String
+  recorded_at            DateTime    @default(now())
+  price                  Float
+  NMV                    Float
+  daily_pnl              Float
+  mtd_pnl                Float
+  ytd_pnl                Float
+  fair_value             Float?
+  last_busday_fair_value Float?
+  position               tb_position @relation(fields: [position_id], references: [id])
+}
+
+model tb_order {
+  id                String                @id @default(uuid())
+  bookId            String
+  instrumentId      String
+  accountId         String?
+  side              OrderSide
+  quantity          Float
+  price             Float? // Nulo para ordens de mercado
+  remaining_qty     Float
+  tag_ids           String[]
+  status            OrderStatus           @default(PENDING)
+  counterpartyId    String?
+  traderId          String
+  orderType         OrderType?            @default(LOAN)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  expiryDate        DateTime?
+  paymentType       PaymentType?          @default(FixedRate)
+  accr_method       accrual_method?       @default(ACTUAL360)
+  comp_freq         CompFreq?             @default(SIMPLE)
+  payment_frequency PaymentFrequency?     @default(TERM)
+  payment_bdc       PaymentBDC?           @default(MODFOLLOWING)
+  trades            tb_trade[] // Uma ordem pode resultar em múltiplos trades (execução parcial)
+  book              tb_book               @relation(fields: [bookId], references: [id])
+  instrument        tb_instrument         @relation(fields: [instrumentId], references: [id])
+  trader            tb_user               @relation(fields: [traderId], references: [id])
+  counterparty      tb_counterparty?      @relation(fields: [counterpartyId], references: [id])
+  tags              tb_tag[]              @relation("OrderTags")
+  allocations       tb_order_allocation[]
+}
+
+model tb_trade {
+  id                String                @id @default(uuid())
+  orderId           String? // Uma trade pode ter sido gerada por uma ordem ou não
+  bookId            String
+  positionId        String
+  instrumentId      String
+  description       String?
+  trade             TxnType
+  quantity          Float
+  price             Float
+  tag_ids           String[]
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  counterpartyId    String
+  fees              Float
+  status            Boolean
+  trade_type        String
+  traderId          String
+  orderType         OrderType?            @default(LOAN)
+  paymentType       PaymentType?          @default(FixedRate)
+  accr_method       accrual_method?       @default(ACTUAL360)
+  comp_freq         CompFreq?             @default(SIMPLE)
+  payment_frequency PaymentFrequency?     @default(TERM)
+  payment_bdc       PaymentBDC            @default(MODFOLLOWING)
+  book              tb_book               @relation(fields: [bookId], references: [id])
+  order             tb_order?             @relation(fields: [orderId], references: [id])
+  counterparty      tb_counterparty       @relation(fields: [counterpartyId], references: [id])
+  trader            tb_user               @relation(fields: [traderId], references: [id])
+  position          tb_position           @relation(fields: [positionId], references: [id])
+  instrument        tb_instrument         @relation(fields: [instrumentId], references: [id])
+  allocations       tb_trade_allocation[]
+  tags              tb_tag[]              @relation("TradeTags")
+}
+
+model tb_trade_allocation {
+  id        String     @id @default(uuid())
+  tradeId   String     @unique
+  accountId String
+  quantity  Int
+  trade     tb_trade   @relation(fields: [tradeId], references: [id])
+  account   tb_account @relation(fields: [accountId], references: [id])
+}
+
+model tb_counterparty {
+  id           String                    @id @default(uuid())
+  name         String                    @unique
+  number       Int                       @unique
+  accountLinks tb_account_counterparty[]
+  positions    tb_position[]
+  trades       tb_trade[]
+  orders       tb_order[]
+}
+
+model tb_compliance {
+  id          String               @id @default(uuid())
+  name        String
+  description String
+  start_date  DateTime
+  expiry_date DateTime?
+  rules       tb_compliance_rule[]
+  account     tb_account[]
+}
+
+model tb_compliance_rule {
+  id           String        @id @default(uuid())
+  complianceId String
+  description  String
+  rule_type    RuleType
+  param_name   String
+  param_value  String
+  status       Boolean
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  compliance   tb_compliance @relation(fields: [complianceId], references: [id])
+}
+
+model tb_risk_profile {
+  id                  String       @id @default(uuid())
+  name                String
+  description         String
+  var_limit           Float // Value at Risk limit
+  stress_limit        Float // Stress test limit
+  concentration_limit Float // Concentration limit
+  accounts            tb_account[]
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+}
+
+model tb_instrument {
+  id             String            @id @default(uuid())
+  type           instrument_type
+  description    String?
+  ticker         String
+  cusip          String?
+  isin           String?
+  sedol          String?
+  exchange       String?
+  category       String
+  currency       String
+  status         Boolean
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  positions      tb_position[]
+  trades         tb_trade[]
+  orders         tb_order[]
+}
+
+model tb_tag {
+  id          String        @id @default(uuid())
+  name        String        @unique
+  description String?
+  color       String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  positions   tb_position[] @relation("PositionTags")
+  trades      tb_trade[]    @relation("TradeTags")
+  orders      tb_order[]    @relation("OrderTags")
+}
+
+enum OrderStatus {
+  PENDING
+  PARTIAL
+  FILLED
+  CANCELLED
+  REJECTED
+  EXPIRED
+}
+
+enum OrderSide {
+  BUY
+  SELL
+}
+
+enum OptionType {
+  CALL
+  PUT
+}
+
+enum ExerciseType {
+  AMERICAN
+  EUROPEAN
+  BERMUDAN
+}
+
+enum RuleType {
+  CONCENTRATION
+  EXPOSURE
+  VAR
+  ISSUER
+  CUSTOM
+}
+
+enum accrual_method {
+  UNKNWON
+  D30360
+  D30360ISMA
+  ACTUAL360
+  ACTUAL365
+  ACTUAL365F
+  ACTACT
+  ACTACTISDA
+  BUS252
+  BUS252S
+  D30360SIA
+}
+
+enum PaymentFrequency {
+  ANNUAL
+  SEMIANNUAL
+  QUATERLY
+  MONTHLY
+  WEEKLY
+  BIWEEKLY
+  DAILY
+  TERM
+  DAY28
+  DAY35
+  DAY42
+  DAY91
+  DAY182
+}
+
+enum PaymentBDC {
+  NONE
+  FOLLOWING
+  FRN
+  MODFOLLOWING
+  PRECEDING
+  MODPRECEDING
+  EOM
+  EOMF
+  EOMP
+  THIRDWED
+  EOMMODF
+  EOMMP
+}
+
+enum instrument_type {
+  EQUITY
+  EQUITYLOAN
+  EQUITYFORWARD
+  EQUITYFUTURE
+  EQUITYOPTION
+  CASH
+}
+
+enum CompFreq {
+  DAILY
+  QUARTERLY
+  SEMIANNUAL
+  MONTHLY
+  ANNUAL
+  SIMPLE
+  CONTINUOUS
+  WEEKLY
+}
+
+enum TxnType {
+  BUY
+  SELL
+  BUYTOCOVER
+  SELLSHORT
+}
+
+enum PaymentType {
+  FixedRate
+  FloatingRate
+}
+
+enum OrderType {
+  BORROW
+  UNWINDBORROW
+  UNWINDLOAN
+  LOAN
+  MARKET
+  LIMIT
+  STOP
+  STOPLIMIT
+}
+
+enum PriceSource {
+  ORBIX
+  IMPORTED
+  BLOOMBERG
+  REFINITIV
+  MANUAL
+}
+
+enum Role {
+  ADMIN
+  TRADER
+  COMUM
+  RISKMANAGER
+  COMPLIANCE
+}
